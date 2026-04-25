@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinity Neon Heart</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --neon-pink: #ff007f;
+            --neon-blue: #00f2ff;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #message-container {
+            position: absolute;
+            bottom: 10%;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .heart-text {
+            color: white;
+            font-size: 1.5rem;
+            letter-spacing: 5px;
+            font-weight: 300;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
+            opacity: 0;
+            animation: fadeInOut 6s infinite;
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translateY(10px); }
+            20%, 80% { opacity: 1; transform: translateY(0); }
+        }
+
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, transparent 40%, rgba(0,0,0,1) 100%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="vignette"></div>
+    <canvas id="canvas"></canvas>
+    <div id="message-container">
+        <!-- The message has been updated for Vanessa -->
+        <div class="heart-text">this is for u vanessa</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let pointsLeft = [];
+        let pointsRight = [];
+        let particles = [];
+        let progress = 0;
+        let state = 'drawing'; // drawing, waiting, fading
+        let waitTimer = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            generatePoints();
+        }
+
+        // Heart Parametric Equation
+        function getHeartPoint(t) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+            return { x, y: -y };
+        }
+
+        function generatePoints() {
+            pointsLeft = [];
+            pointsRight = [];
+            // We split t into two sides from the top center
+            // t=0 is the top-center cleavage
+            for (let t = 0; t <= Math.PI; t += 0.02) {
+                pointsLeft.push(getHeartPoint(t));
+                pointsRight.push(getHeartPoint(-t));
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.4;
+                this.vy = (Math.random() - 0.5) * 0.4;
+                this.size = Math.random() * 1.5;
+                this.alpha = Math.random();
+                this.color = Math.random() > 0.5 ? '#ff007f' : '#00f2ff';
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) this.reset();
+            }
+            draw() {
+                ctx.globalAlpha = this.alpha * 0.5;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            for (let i = 0; i < 100; i++) particles.push(new Particle());
+        }
+
+        function drawPath(points, color, currentProgress, pulse) {
+            const drawCount = Math.floor(points.length * currentProgress);
+            if (drawCount < 2) return;
+
+            const scale = Math.min(width, height) / 45;
+            const cx = width / 2;
+            const cy = height / 2 - (scale * 2);
+
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // 1. Wide outer glow
+            ctx.shadowBlur = 20 + pulse;
+            ctx.shadowColor = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i = 0; i < drawCount; i++) {
+                const x = cx + points[i].x * scale;
+                const y = cy + points[i].y * scale;
+                if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // 2. Bright white core
+            ctx.shadowBlur = 5;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function animate() {
+            // Motion blur effect
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => { p.update(); p.draw(); });
+
+            const pulse = Math.sin(Date.now() / 250) * 10;
+
+            if (state === 'drawing') {
+                progress += 0.005;
+                if (progress >= 1) {
+                    progress = 1;
+                    state = 'waiting';
+                    waitTimer = 0;
+                }
+            } else if (state === 'waiting') {
+                waitTimer++;
+                if (waitTimer > 150) state = 'fading';
+            } else if (state === 'fading') {
+                progress -= 0.01;
+                if (progress <= 0) {
+                    progress = 0;
+                    state = 'drawing';
+                }
+            }
+
+            drawPath(pointsLeft, '#ff007f', progress, pulse);
+            drawPath(pointsRight, '#00f2ff', progress, pulse);
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
